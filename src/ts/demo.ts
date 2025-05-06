@@ -5,6 +5,7 @@ import BufferQueue from "./BufferQueue.js";
 import secureMPC from "./secureMPC.js";
 import { IO } from "./types";
 import assert from './assert.js';
+import { channelFromByte } from "./utils.js";
 
 const windowAny = window as any;
 
@@ -196,17 +197,6 @@ async function makeWebSocketIO(url: string, otherParty: number) {
   sock.onclose = () => io.close();
 
   return io;
-}
-
-function channelFromByte(byte: number): 'a' | 'b' {
-  switch (byte) {
-    case 'a'.charCodeAt(0):
-      return 'a';
-    case 'b'.charCodeAt(0):
-      return 'b';
-    default:
-      throw new Error('Invalid channel');
-  }
 }
 
 async function makePeerIO(pairingCode: string, party: number) {
