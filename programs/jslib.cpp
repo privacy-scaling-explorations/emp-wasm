@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 
 #include "emp-tool/io/i_raw_io.h"
 #include "emp-ag2pc/2pc.h"
@@ -24,44 +25,120 @@ EM_JS(void, send_js, (int to_party, char channel_label, const void* data, size_t
 });
 
 // Implement recv_js function to receive data from JavaScript to C++
-EM_ASYNC_JS(void, recv_js, (int from_party, char channel_label, void* data, size_t len), {
+EM_ASYNC_JS(size_t, recv_js, (int from_party, char channel_label, void* data, size_t min_len, size_t max_len), {
     if (!Module.emp?.io?.recv) {
         reject(new Error("Module.emp.io.recv is not defined in JavaScript."));
         return;
     }
 
     // Wait for data from JavaScript
-    const dataArray = await Module.emp.io.recv(from_party - 1, String.fromCharCode(channel_label), len);
+    const dataArray = await Module.emp.io.recv(from_party - 1, String.fromCharCode(channel_label), min_len, max_len);
 
     // Copy data from JavaScript Uint8Array to WebAssembly memory
     HEAPU8.set(dataArray, data);
+
+    // Return the length of the received data
+    return dataArray.length;
 });
+
+class RawIOJS;
+std::map<int, RawIOJS*> raw_io_map;
+int next_raw_io_id = 0;
+size_t MAX_SEND_BUFFER_SIZE = 64 * 1024;
+
+void actual_flush_all();
 
 class RawIOJS : public IRawIO {
 public:
     int other_party;
     char channel_label;
+    std::vector<uint8_t> send_buffer; // TODO: Max buffer size?
+    std::vector<uint8_t> recv_buffer;
+    size_t recv_start = 0;
+    size_t recv_end = 0;
+    int id;
 
     RawIOJS(
         int other_party,
         char channel_label
     ):
         other_party(other_party),
-        channel_label(channel_label)
-    {}
+        channel_label(channel_label),
+        recv_buffer(64 * 1024)
+    {
+        id = next_raw_io_id++;
+        raw_io_map[id] = this;
+    }
+
+    ~RawIOJS() {
+        raw_io_map.erase(id);
+    }
 
     void send(const void* data, size_t len) override {
-        send_js(other_party, channel_label, data, len);
+        if (send_buffer.size() + len > MAX_SEND_BUFFER_SIZE) {
+            actual_flush();
+        }
+
+        // This will still exceed max size if len > MAX_SEND_BUFFER_SIZE, that's ok
+        send_buffer.resize(send_buffer.size() + len);
+
+        std::memcpy(send_buffer.data() + send_buffer.size() - len, data, len);
     }
 
     void recv(void* data, size_t len) override {
-        recv_js(other_party, channel_label, data, len);
+        if (recv_start + len > recv_end) {
+            if (recv_start + len > recv_buffer.size()) {
+                // copy within
+                size_t recv_len = recv_end - recv_start;
+                std::memmove(recv_buffer.data(), recv_buffer.data() + recv_start, recv_len);
+                recv_start = 0;
+                recv_end = recv_len;
+            }
+
+            size_t bytes_needed = recv_start + len - recv_end;
+            size_t room = recv_buffer.size() - recv_end;
+
+            if (bytes_needed > room) {
+                size_t size = recv_buffer.size();
+
+                while (bytes_needed > room) {
+                    size *= 2;
+                    room = size - recv_end;
+                }
+
+                recv_buffer.resize(size);
+            }
+
+            actual_flush_all();
+            size_t bytes_received = recv_js(other_party, channel_label, recv_buffer.data() + recv_end, bytes_needed, room);
+            recv_end += bytes_received;
+
+            if (bytes_received < bytes_needed) {
+                throw std::runtime_error("recv failed");
+            }
+        }
+
+        std::memcpy(data, recv_buffer.data() + recv_start, len);
+        recv_start += len;
     }
 
     void flush() override {
-        // Ignored for now
+        // ignored for now
+    }
+
+    void actual_flush() {
+        if (send_buffer.size() > 0) {
+            send_js(other_party, channel_label, send_buffer.data(), send_buffer.size());
+            send_buffer.clear();
+        }
     }
 };
+
+void actual_flush_all() {
+    for (auto& [key, raw_io] : raw_io_map) {
+        raw_io->actual_flush();
+    }
+}
 
 class MultiIOJS : public IMultiIO {
 public:
@@ -284,6 +361,9 @@ void run_2pc_impl(int party, int nP) {
         twopc.function_dependent();
 
         std::vector<bool> output_bits = twopc.online(input_bits, true);
+
+        actual_flush_all();
+
         handle_output_bits(output_bits);
     } catch (const std::exception& e) {
         handle_error(e.what());
@@ -338,6 +418,8 @@ void run_mpc_impl(int party, int nP) {
         for (int i = 0; i < circuit.n3; i++) {
             output_bits.push_back(output.get_plaintext_bit(i));
         }
+
+        actual_flush_all();
 
         handle_output_bits(output_bits);
     } catch (const std::exception& e) {

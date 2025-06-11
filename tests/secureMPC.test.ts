@@ -55,9 +55,9 @@ async function internalDemo(
           expect(toParty).to.equal(1);
           bqs.get('alice', 'bob', channel).push(data);
         },
-        recv: async (fromParty, channel, len) => {
+        recv: async (fromParty, channel, min_len, max_len) => {
           expect(fromParty).to.equal(1);
-          return bqs.get('bob', 'alice', channel).pop(len);
+          return bqs.get('bob', 'alice', channel).pop(min_len, max_len);
         },
       },
       mode,
@@ -73,9 +73,9 @@ async function internalDemo(
           expect(toParty).to.equal(0);
           bqs.get('bob', 'alice', channel).push(data);
         },
-        recv: async (fromParty, channel, len) => {
+        recv: async (fromParty, channel, min_len, max_len) => {
           expect(fromParty).to.equal(0);
-          return bqs.get('alice', 'bob', channel).pop(len);
+          return bqs.get('alice', 'bob', channel).pop(min_len, max_len);
         },
       },
       mode,
@@ -119,8 +119,8 @@ async function internalDemoN(
       send: (toParty, channel, data) => {
         bqs.get(party, toParty, channel).push(data);
       },
-      recv: async (fromParty, channel, len) => {
-        return bqs.get(fromParty, party, channel).pop(len);
+      recv: async (fromParty, channel, min_len, max_len) => {
+        return bqs.get(fromParty, party, channel).pop(min_len, max_len);
       },
     }
   })));

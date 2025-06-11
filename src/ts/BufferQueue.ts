@@ -5,7 +5,7 @@ export default class BufferQueue {
   private buffer: Uint8Array;
   private bufferStart: number;
   private bufferEnd: number;
-  private pendingPops: number[];
+  private pendingPops: { min_len: number, max_len: number }[];
   private pendingPopsResolvers: {
     resolve: ((value: Uint8Array) => void),
     reject: (e: Error) => void,
@@ -65,19 +65,21 @@ export default class BufferQueue {
    * @param len - The number of bytes to pop from the buffer.
    * @returns A promise resolving with the popped data as a Uint8Array.
    */
-  pop(len: number): Promise<Uint8Array> {
-    if (typeof len !== 'number' || len < 0) {
-      return Promise.reject(new Error('Length must be non-negative integer'));
+  pop(min_len: number, max_len: number): Promise<Uint8Array> {
+    if (typeof min_len !== 'number' || typeof max_len !== 'number' || min_len < 0 || max_len < 0 || min_len > max_len) {
+      return Promise.reject(new Error('Invalid min/max lengths'));
     }
 
-    if (this.bufferEnd - this.bufferStart >= len) {
-      const result = this.buffer.slice(this.bufferStart, this.bufferStart + len);
-      this.bufferStart += len;
+    if (this.bufferEnd - this.bufferStart >= min_len) {
+      const available_len = this.bufferEnd - this.bufferStart;
+      const provide_len = Math.min(max_len, available_len);
+      const result = this.buffer.slice(this.bufferStart, this.bufferStart + provide_len);
+      this.bufferStart += result.length;
       this._compactBuffer();
       return Promise.resolve(result);
     } else if (!this.closed) {
       return new Promise((resolve, reject) => {
-        this.pendingPops.push(len);
+        this.pendingPops.push({ min_len, max_len });
         this.pendingPopsResolvers.push({ resolve, reject });
       });
     } else {
@@ -109,10 +111,12 @@ export default class BufferQueue {
    */
   private _resolvePendingPops(): void {
     while (this.pendingPops.length > 0) {
-      const len = this.pendingPops[0];
-      if (this.bufferEnd - this.bufferStart >= len) {
-        const data = this.buffer.slice(this.bufferStart, this.bufferStart + len);
-        this.bufferStart += len;
+      const { min_len, max_len } = this.pendingPops[0];
+      if (this.bufferEnd - this.bufferStart >= min_len) {
+        const available_len = this.bufferEnd - this.bufferStart;
+        const provide_len = Math.min(max_len, available_len);
+        const data = this.buffer.slice(this.bufferStart, this.bufferStart + provide_len);
+        this.bufferStart += data.length;
         this.pendingPops.shift();
         const { resolve } = this.pendingPopsResolvers.shift()!;
         resolve(data);
