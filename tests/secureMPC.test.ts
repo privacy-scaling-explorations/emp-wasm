@@ -1,4 +1,6 @@
 import fs from 'fs/promises';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
 import { expect } from 'chai';
 import { BufferQueue, secureMPC } from "../src/ts";
@@ -23,35 +25,25 @@ describe('Secure MPC', () => {
     expect(await internalDemoN(3, 5, 5)).to.deep.equal([8, 8, 8, 8, 8]);
   });
 
-  it('sha1("") == "da..09" (2 parties)', async function () {
-    this.timeout(60_000);
+  for (let nParties = 2; nParties <= 4; nParties++) {
+    for (const flavor of ['internal    ', 'subprocesses']) {
+      it(`sha1("") == "da..09" | ${nParties} parties | ${flavor}`, async function () {
+        this.timeout(60_000);
 
-    const outputs = await internalDemoSha1N(2);
+        let outputs: string[];
 
-    for (const output of outputs) {
-      expect(output).to.equal('da39a3ee5e6b4b0d3255bfef95601890afd80709');
+        if (flavor === 'internal    ') {
+          outputs = await internalDemoSha1N(nParties);
+        } else {
+          outputs = await subprocessesSha1N(nParties);
+        }
+
+        for (const output of outputs) {
+          expect(output).to.equal('da39a3ee5e6b4b0d3255bfef95601890afd80709');
+        }
+      });
     }
-  });
-
-  it('sha1("") == "da..09" (3 parties)', async function () {
-    this.timeout(60_000);
-
-    const outputs = await internalDemoSha1N(3);
-
-    for (const output of outputs) {
-      expect(output).to.equal('da39a3ee5e6b4b0d3255bfef95601890afd80709');
-    }
-  });
-
-  it('sha1("") == "da..09" (4 parties)', async function () {
-    this.timeout(60_000);
-
-    const outputs = await internalDemoSha1N(4);
-
-    for (const output of outputs) {
-      expect(output).to.equal('da39a3ee5e6b4b0d3255bfef95601890afd80709');
-    }
-  });
+  }
 });
 
 class BufferQueueStore {
@@ -226,6 +218,51 @@ async function internalDemoSha1N(
       },
     }
   })));
+
+  return outputBits.map(bits => bitsToHex(bits));
+}
+
+async function subprocessesSha1N(
+  size: number,
+): Promise<string[]> {
+  const sha1CircuitPath = import.meta.resolve(`../circuits/sha-1.txt`).slice(7);
+  const cliPath = import.meta.resolve('./helpers/cli.ts').slice(7);
+
+  const inputBitsPerParty = new Array(size).fill(0);
+  inputBitsPerParty[0] = 512;
+
+  const execAsync = promisify(exec);
+
+  const outputBits = await Promise.all(new Array(size).fill(0).map(async (_0, party) => {
+    const inputBits = (() => {
+      if (party === 0) {
+        const bits = new Uint8Array(512);
+        bits[0] = 1; // A single leading 1 to make a valid sha1 block.
+        return bits;
+      }
+
+      return new Uint8Array(0);
+    })();
+
+    const cmd = [
+      'tsx',
+      cliPath,
+      8000,
+      size,
+      party,
+      sha1CircuitPath,
+      ...inputBitsPerParty,
+      inputBits.length === 0 ? '.' : [...inputBits].join(''),
+    ].join(' ');
+
+    const { stdout, stderr } = await execAsync(cmd);
+
+    if (stderr.trim() !== '') {
+      throw new Error(stderr);
+    }
+
+    return Uint8Array.from(stdout.trim().split('').map(Number));
+  }));
 
   return outputBits.map(bits => bitsToHex(bits));
 }

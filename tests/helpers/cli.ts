@@ -17,10 +17,17 @@ async function main() {
 
   if (args.length !== 1) {
     console.error('Usage: tsx cli.ts <portStart> <nParties> <partyIndex> <circuit> <inputBitsPerParty> <inputBits>');
+    console.error(`got: tsx cli.ts ${process.argv.slice(2).join(' ')}`);
     process.exit(1);
   }
 
-  const inputBits = Uint8Array.from([...args[0]].map(Number));
+  let inputBits: Uint8Array;
+
+  if (args[0] === '.') {
+    inputBits = new Uint8Array(0);
+  } else {
+    inputBits = Uint8Array.from([...args[0]].map(Number));
+  }
 
   const io = await makeTCPSocketIO('127.0.0.1', portStart, nParties, partyIndex);
 
