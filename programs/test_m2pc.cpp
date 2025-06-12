@@ -3,7 +3,9 @@
 using namespace std;
 using namespace emp;
 
-const string circuit_file_location = "circuits/adder_32bit.txt";;
+const string circuit_file_location = "circuits/sha-1.txt";;
+
+std::string binary_to_hex(const std::string& bin);
 
 int main(int argc, char** argv) {
     int port, party;
@@ -27,20 +29,10 @@ int main(int argc, char** argv) {
     FlexIn input(nP, cf.n1 + cf.n2, party);
 
     for (int i = 0; i < cf.n1 + cf.n2; i++) {
-        if (i < 32) {
-            input.assign_party(i, 1);
+        input.assign_party(i, 1);
 
-            if (party == 1) {
-                // 3
-                input.assign_plaintext_bit(i, i == 0 || i == 1);
-            }
-        } else {
-            input.assign_party(i, 2);
-
-            if (party == 2) {
-                // 5
-                input.assign_plaintext_bit(i, i == 32 || i == 34);
-            }
+        if (party == 1) {
+            input.assign_plaintext_bit(i, i == 0);
         }
     }
 
@@ -59,8 +51,38 @@ int main(int argc, char** argv) {
     string res = "";
     for(int i = 0; i < cf.n3; ++i)
         res += (output.get_plaintext_bit(i)?"1":"0");
-    cout << res<<endl;
+    cout << binary_to_hex(res) <<endl;
 
     delete mpc;
     return 0;
+}
+
+std::string binary_to_hex(const std::string& bin) {
+    if (bin.length() % 4 != 0) {
+        throw std::invalid_argument("Binary string length must be a multiple of 4");
+    }
+
+    std::string hex;
+    for (std::size_t i = 0; i < bin.length(); i += 4) {
+        std::string chunk = bin.substr(i, 4);
+        if (chunk == "0000") hex += '0';
+        else if (chunk == "0001") hex += '1';
+        else if (chunk == "0010") hex += '2';
+        else if (chunk == "0011") hex += '3';
+        else if (chunk == "0100") hex += '4';
+        else if (chunk == "0101") hex += '5';
+        else if (chunk == "0110") hex += '6';
+        else if (chunk == "0111") hex += '7';
+        else if (chunk == "1000") hex += '8';
+        else if (chunk == "1001") hex += '9';
+        else if (chunk == "1010") hex += 'a';
+        else if (chunk == "1011") hex += 'b';
+        else if (chunk == "1100") hex += 'c';
+        else if (chunk == "1101") hex += 'd';
+        else if (chunk == "1110") hex += 'e';
+        else if (chunk == "1111") hex += 'f';
+        else throw std::invalid_argument("Invalid binary chunk");
+    }
+
+    return hex;
 }
