@@ -2,7 +2,7 @@ import type { IO } from "./types";
 
 type Module = {
   emp?: {
-    circuit?: string;
+    circuitBinary?: Uint8Array;
     inputBits?: Uint8Array;
     inputBitsPerParty?: number[];
     io?: IO;
@@ -22,18 +22,18 @@ declare const createModule: () => Promise<Module>
  *
  * @param party - The party index joining the computation (0, 1, .. N-1).
  * @param size - The number of parties in the computation.
- * @param circuit - The circuit to run.
+ * @param circuitBinary - The circuit to run.
  * @param inputBits - The input bits for the circuit, represented as one bit per byte.
  * @param inputBitsPerParty - The number of input bits for each party.
  * @param io - Input/output channels for communication between the two parties.
  * @returns A promise resolving with the output bits of the circuit.
  */
 async function secureMPC({
-  party, size, circuit, inputBits, inputBitsPerParty, io, mode = 'auto',
+  party, size, circuitBinary, inputBits, inputBitsPerParty, io, mode = 'auto',
 }: {
   party: number,
   size: number,
-  circuit: string,
+  circuitBinary: Uint8Array,
   inputBits: Uint8Array,
   inputBitsPerParty: number[],
   io: IO,
@@ -48,7 +48,7 @@ async function secureMPC({
   running = true;
 
   const emp: {
-    circuit?: string;
+    circuitBinary?: Uint8Array;
     inputBits?: Uint8Array;
     inputBitsPerParty?: number[];
     io?: IO;
@@ -58,7 +58,7 @@ async function secureMPC({
 
   module.emp = emp;
 
-  emp.circuit = circuit;
+  emp.circuitBinary = circuitBinary;
   emp.inputBits = inputBits;
   emp.inputBitsPerParty = inputBitsPerParty;
 
@@ -73,7 +73,7 @@ async function secureMPC({
     recv: useRejector(io.recv.bind(io), reject),
   };
 
-  const method = calculateMethod(mode, size, circuit);
+  const method = calculateMethod(mode, size, circuitBinary);
 
   const result = new Promise<Uint8Array>(async (resolve, reject) => {
     try {
@@ -99,7 +99,7 @@ function calculateMethod(
 
   // Currently unused, but some 2-party circuits might perform better with
   // _runMPC
-  _circuit: string,
+  _circuitBinary: Uint8Array,
 ) {
   switch (mode) {
     case '2pc':
@@ -133,7 +133,7 @@ onmessage = async (event) => {
   const message = event.data;
 
   if (message.type === 'start') {
-    const { party, size, circuit, inputBits, inputBitsPerParty, mode } = message;
+    const { party, size, circuitBinary, inputBits, inputBitsPerParty, mode } = message;
 
     // Create a proxy IO object to communicate with the main thread
     const io: IO = {
@@ -153,7 +153,7 @@ onmessage = async (event) => {
       const result = await secureMPC({
         party,
         size,
-        circuit,
+        circuitBinary,
         inputBits,
         inputBitsPerParty,
         io,

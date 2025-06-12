@@ -187,31 +187,30 @@ public:
     }
 };
 
-EM_JS(char*, get_circuit_raw, (int* lengthPtr), {
-    if (!Module.emp?.circuit) {
-        throw new Error("Module.emp.circuit is not defined in JavaScript.");
+EM_JS(uint8_t*, get_circuit_raw, (int* lengthPtr), {
+    if (!Module.emp?.circuitBinary) {
+        throw new Error("Module.emp.circuitBinary is not defined in JavaScript.");
     }
 
-    const circuitString = Module.emp.circuit; // Get the string from JavaScript
-    const length = lengthBytesUTF8(circuitString) + 1; // Calculate length including the null terminator
+    const circuitBinary = Module.emp.circuitBinary; // Get the string from JavaScript
 
-    // Allocate memory for the string
-    const strPtr = Module._js_char_malloc(length);
-    stringToUTF8(circuitString, strPtr, length);
+    // Allocate memory
+    const ptr = Module._js_malloc(circuitBinary.length);
+    Module.HEAPU8.set(circuitBinary, ptr);
 
     // Set the length at the provided pointer location
-    setValue(lengthPtr, length, 'i32');
+    setValue(lengthPtr, circuitBinary.length, 'i32');
 
     // Return the pointer
-    return strPtr;
+    return ptr;
 });
 
 emp::BristolFormat get_circuit() {
     int length = 0;
-    char* circuit_raw = get_circuit_raw(&length);
+    uint8_t* circuit_raw = get_circuit_raw(&length);
 
     emp::BristolFormat circuit;
-    circuit.from_str(circuit_raw);
+    circuit.from_buffer(circuit_raw, length);
     free(circuit_raw);
 
     return circuit;

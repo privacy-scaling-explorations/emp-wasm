@@ -89,6 +89,78 @@ public:
         fout.close();
     }
 
+    /*  Consume the binary layout produced by bristolToBinary.
+    *  ┌────────────┬──────────────────────────────────────────────────┐
+    *  │ bytes 0-19 │ five uint32  (num_gate, num_wire, n1, n2, n3)    │
+    *  │ …          │ repeated records                                 │
+    *  │            │   1 byte  opcode (0 INV, 1 XOR, 2 AND)           │
+    *  │            │   INV : 2 × uint32  (in , out)          ──  9 B  │
+    *  │            │   XOR/AND: 3 × uint32 (in1,in2,out)     ── 13 B  │
+    *  └────────────┴──────────────────────────────────────────────────┘
+    *  Any deviation throws std::runtime_error.
+    */
+    void from_buffer(const uint8_t* buf, int size) {
+        auto need = [&](size_t n) {
+            if (n > static_cast<size_t>(size))
+                throw std::runtime_error("Buffer too small / truncated");
+        };
+
+        auto read_u32 = [&](const uint8_t* p) -> uint32_t {
+            return  static_cast<uint32_t>(p[0]) |
+                (static_cast<uint32_t>(p[1]) <<  8) |
+                (static_cast<uint32_t>(p[2]) << 16) |
+                (static_cast<uint32_t>(p[3]) << 24);
+        };
+
+        /* ---------- header ---------- */
+        need(20);
+        num_gate = static_cast<int>(read_u32(buf + 0));
+        num_wire = static_cast<int>(read_u32(buf + 4));
+        n1       = static_cast<int>(read_u32(buf + 8));
+        n2       = static_cast<int>(read_u32(buf + 12));
+        n3       = static_cast<int>(read_u32(buf + 16));
+
+        gates.resize(num_gate * 4);
+        wires.resize(num_wire);
+
+        size_t offset = 20;
+        for (int g = 0; g < num_gate; ++g) {
+            need(offset + 1);                              // opcode byte
+            uint8_t opcode = buf[offset++];
+            switch (opcode) {
+                case 0: {  // INV
+                    need(offset + 8);
+                    int in  = static_cast<int>(read_u32(buf + offset));     offset += 4;
+                    int out = static_cast<int>(read_u32(buf + offset));     offset += 4;
+
+                    gates[4 * g]     = in;
+                    gates[4 * g + 1] = 0;   // unused
+                    gates[4 * g + 2] = out;
+                    gates[4 * g + 3] = NOT_GATE;
+                    break;
+                }
+                case 1:      // XOR
+                case 2: {    // AND
+                    need(offset + 12);
+                    int in1 = static_cast<int>(read_u32(buf + offset));     offset += 4;
+                    int in2 = static_cast<int>(read_u32(buf + offset));     offset += 4;
+                    int out = static_cast<int>(read_u32(buf + offset));     offset += 4;
+
+                    gates[4 * g]     = in1;
+                    gates[4 * g + 1] = in2;
+                    gates[4 * g + 2] = out;
+                    gates[4 * g + 3] = (opcode == 1) ? XOR_GATE : AND_GATE;
+                    break;
+                }
+                default:
+                    throw std::runtime_error("Unknown gate opcode");
+            }
+        }
+
+        if (offset != static_cast<size_t>(size))
+            throw std::runtime_error("Extra bytes after final gate");
+    }
+
     void compute(Bit* out, const Bit* in1, const Bit* in2) {
         compute((block*)out, (block*)in1, (block*)in2);
     }
