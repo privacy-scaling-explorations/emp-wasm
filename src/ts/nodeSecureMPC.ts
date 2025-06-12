@@ -5,18 +5,18 @@ import type { IO } from "./types";
  *
  * @param party - The party index joining the computation (0, 1, .. N-1).
  * @param size - The number of parties in the computation.
- * @param circuit - The circuit to run.
+ * @param circuitBinary - The circuit to run.
  * @param inputBits - The input to the circuit, represented as one bit per byte.
  * @param inputBitsPerParty - The number of input bits for each party.
  * @param io - Input/output channels for communication between the two parties.
  * @returns A promise resolving with the output bits of the circuit.
  */
 export default async function nodeSecureMPC({
-  party, size, circuit, inputBits, inputBitsPerParty, io, mode = 'auto',
+  party, size, circuitBinary, inputBits, inputBitsPerParty, io, mode = 'auto',
 }: {
   party: number,
   size: number,
-  circuit: string,
+  circuitBinary: Uint8Array,
   inputBits: Uint8Array,
   inputBitsPerParty: number[],
   io: IO,
@@ -29,7 +29,7 @@ export default async function nodeSecureMPC({
   let module = await ((await import('../../build/jslib.js')).default());
 
   const emp: {
-    circuit?: string;
+    circuitBinary?: Uint8Array;
     inputBits?: Uint8Array;
     inputBitsPerParty?: number[];
     io?: IO;
@@ -39,7 +39,7 @@ export default async function nodeSecureMPC({
 
   module.emp = emp;
 
-  emp.circuit = circuit;
+  emp.circuitBinary = circuitBinary;
   emp.inputBits = inputBits;
   emp.inputBitsPerParty = inputBitsPerParty;
 
@@ -54,7 +54,7 @@ export default async function nodeSecureMPC({
     recv: useRejector(io.recv.bind(io), reject),
   };
 
-  const method = calculateMethod(mode, size, circuit);
+  const method = calculateMethod(mode, size, circuitBinary);
 
   const result = await new Promise<Uint8Array>((resolve, reject) => {
     try {
@@ -77,7 +77,7 @@ function calculateMethod(
 
   // Currently unused, but some 2-party circuits might perform better with
   // _runMPC
-  _circuit: string,
+  _circuitBinary: Uint8Array,
 ) {
   switch (mode) {
     case '2pc':

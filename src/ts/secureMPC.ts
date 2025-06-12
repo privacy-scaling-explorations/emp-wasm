@@ -2,6 +2,7 @@ import { EventEmitter } from "ee-typed";
 import type { IO } from "./types";
 import workerCode from "./workerCode.js";
 import nodeSecureMPC from "./nodeSecureMPC.js";
+import bristolToBinary from "./bristolToBinary.js";
 
 export type SecureMPC = typeof secureMPC;
 
@@ -29,9 +30,11 @@ export default function secureMPC({
   io: IO,
   mode?: '2pc' | 'mpc' | 'auto',
 }): Promise<Uint8Array> {
+  const circuitBinary = bristolToBinary(circuit);
+
   if (typeof Worker === 'undefined') {
     return nodeSecureMPC({
-      party, size, circuit, inputBits, inputBitsPerParty, io, mode,
+      party, size, circuitBinary, inputBits, inputBitsPerParty, io, mode,
     });
   }
 
@@ -48,7 +51,7 @@ export default function secureMPC({
       type: 'start',
       party,
       size,
-      circuit,
+      circuitBinary,
       inputBits,
       inputBitsPerParty,
       mode,

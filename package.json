@@ -1,6 +1,6 @@
 {
   "name": "emp-wasm",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Wasm build of authenticated garbling from [emp-toolkit/emp-ag2pc](https://github.com/emp-toolkit/emp-ag2pc).",
   "type": "module",
   "main": "dist/src/ts/index.js",
