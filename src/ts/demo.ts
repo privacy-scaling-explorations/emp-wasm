@@ -28,7 +28,7 @@ windowAny.internalDemo = async function(
       inputBitsPerParty: [32, 32],
       io: {
         send: (toParty, channel, data) => bobBq[channel].push(data),
-        recv: (fromParty, channel, len) => aliceBq[channel].pop(len),
+        recv: (fromParty, channel, min_len, max_len) => aliceBq[channel].pop(min_len, max_len),
       },
       mode,
     }),
@@ -40,7 +40,7 @@ windowAny.internalDemo = async function(
       inputBitsPerParty: [32, 32],
       io: {
         send: (toParty, channel, data) => aliceBq[channel].push(data),
-        recv: (fromParty, channel, len) => bobBq[channel].pop(len),
+        recv: (fromParty, channel, min_len, max_len) => bobBq[channel].pop(min_len, max_len),
       },
       mode,
     }),
@@ -69,7 +69,7 @@ windowAny.internalDemo3 = async function(
     inputBitsPerParty: [32, 32, 32],
     io: {
       send: (toParty, channel, data) => bqs.get(party, toParty, channel).push(data),
-      recv: (fromParty, channel, len) => bqs.get(fromParty, party, channel).pop(len),
+      recv: (fromParty, channel, min_len, max_len) => bqs.get(fromParty, party, channel).pop(min_len, max_len),
     },
     mode,
   })));
@@ -342,9 +342,9 @@ function makeCopyPasteIO(otherParty: number): IO {
 
   return {
     send: makeConsoleSend(otherParty),
-    recv: (fromParty, channel, len) => {
+    recv: (fromParty, channel, min_len, max_len) => {
       assert(fromParty === otherParty, 'Unexpected party');
-      return bq[channel].pop(len);
+      return bq[channel].pop(min_len, max_len);
     },
   };
 }

@@ -42,7 +42,17 @@ export default async function nodeSecureMPC({
   emp.circuit = circuit;
   emp.inputBits = inputBits;
   emp.inputBitsPerParty = inputBitsPerParty;
-  emp.io = io;
+
+  let reject: undefined | ((error: unknown) => void) = undefined;
+  const callbackRejector = new Promise((_resolve, rej) => {
+    reject = rej;
+  });
+  reject = reject!;
+
+  emp.io = {
+    send: useRejector(io.send.bind(io), reject),
+    recv: useRejector(io.recv.bind(io), reject),
+  };
 
   const method = calculateMethod(mode, size, circuit);
 
@@ -50,6 +60,7 @@ export default async function nodeSecureMPC({
     try {
       emp.handleOutput = resolve;
       emp.handleError = reject;
+      callbackRejector.catch(reject);
 
       module[method](party, size);
     } catch (error) {
@@ -74,10 +85,29 @@ function calculateMethod(
     case 'mpc':
       return '_run_mpc';
     case 'auto':
-      return size === 2 ? '_run_2pc' : '_run_mpc';
+      // Advantage of 2PC specialization is small and contains "FEQ error" bug
+      // for the large circuits, so the performance currently cannot be realized
+      // where it matters.
+      // Therefore, we default to the general N-party mpc mode, even when there
+      // are only 2 parties.
+      return '_run_mpc';
 
     default:
       const _never: never = mode;
       throw new Error('Unexpected mode: ' + mode);
   }
+}
+
+function useRejector<F extends (...args: any[]) => any>(
+  fn: F,
+  reject: (error: unknown) => void,
+): F {
+  return ((...args: Parameters<F>) => {
+    try {
+      return fn(...args);
+    } catch (error) {
+      reject(error);
+      throw error;
+    }
+  }) as F;
 }
